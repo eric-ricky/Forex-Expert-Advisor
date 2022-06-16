@@ -16,9 +16,11 @@ double count = 1;
 input double firstVolume = 0.1;
 input double rate = 1.5;
 input double pip = 10;
+input double pendingOrderPrice = 0.0;
 input bool isBuy = true;
 bool isDone = false;
 bool isError = false;
+bool isFirst = true;
 
 
 //+------------------------------------------------------------------+
@@ -47,27 +49,25 @@ void OnTick()
 //---
 
    
-   //--- enter buy trade if there's no existing trade
-   if(PositionsTotal() <= 0 && OrdersTotal() <= 0 && !isDone && !isError) {
+   //--- enter buy/sell stop if there's no existing trade
+   if(PositionsTotal() <= 0 && OrdersTotal() <= 0 && !isDone && !isError && isFirst) {
       if(isBuy){
-         double askPrice = CurrentAsk();
+         double askPrice = pendingOrderPrice;
          double posVol = NormalizeDouble(firstVolume,rate);
          double sl = askPrice - (pip * GetPipValue());
          double tp = askPrice + (pip * 2 * GetPipValue());
       
-         Print("--Entering first buy order at: ask: " + askPrice + "sl: " + sl + "tp: " + tp);
-      
-         trade.Buy(posVol,_Symbol,CurrentAsk(),sl,tp);
+         Print("--Entering first buy stop at: ask: " + askPrice + "sl: " + sl + "tp: " + tp);
+         trade.BuyStop(posVol,askPrice,_Symbol,sl,tp);
          
-      }else if(!isBuy) {
-         double bidPrice = CurrentBid();
+      } else if(!isBuy) {
+         double bidPrice = pendingOrderPrice;
          double posVol = NormalizeDouble(firstVolume,rate);
          double sl = bidPrice + (pip * GetPipValue());
          double tp = bidPrice - (pip * 2 * GetPipValue());
-         
-         Print("--Entering first sell order at: bid: " + bidPrice + "sl: " + sl + "tp: " + tp);
-      
-         trade.Sell(posVol,_Symbol,CurrentAsk(),sl,tp);
+                  
+         Print("--Entering first sell stop at: bid: " + bidPrice + "sl: " + sl + "tp: " + tp);
+         trade.SellStop(posVol,bidPrice,_Symbol,sl,tp);
       }
            
       posTicket = trade.ResultOrder();
@@ -80,7 +80,7 @@ void OnTick()
         } 
    }
    
-   if(PositionsTotal() <= 0 && OrdersTotal() >= 0 && !isDone) {
+   if(PositionsTotal() <= 0 && OrdersTotal() >= 0 && !isDone && !isFirst) {
       Print("There are no positions. There is " + OrdersTotal() + " order ");
       ulong orderTicket = OrderGetTicket(0);         
       trade.OrderDelete(orderTicket);
@@ -89,6 +89,7 @@ void OnTick()
 
    
    if(PositionSelect(_Symbol) && !isDone && !isError) {
+      isFirst = false;
       //Print("=== There's an active position: " + _Symbol);   
       double posCurrentPrice = PositionGetDouble(POSITION_PRICE_CURRENT);
       double posOpenPrice = PositionGetDouble(POSITION_PRICE_OPEN);
@@ -171,15 +172,12 @@ void OnTick()
             
             count += 1;
          }
-      }
-      
-         
-        
+      }      
     }
     
-     if(isDone && PositionsTotal() <= 0 && OrdersTotal() >= 0) {
-         Print("CONGRATULATIONS!! YOUVE HIT THE TAKE PROFIT!!");
-      }
+    if(isDone && PositionsTotal() <= 0 && OrdersTotal() > 0 &!isError) {
+       Print("CONGRATULATIONS!! YOUVE HIT THE TAKE PROFIT!!");
+    }
    
    
    //--- if there is an existing position
