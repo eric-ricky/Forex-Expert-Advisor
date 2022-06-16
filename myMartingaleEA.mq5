@@ -13,8 +13,12 @@
 CTrade trade;
 ulong posTicket;
 double count = 1;
-double firstVolume = 0.01;
-double firstPip = 100;
+input double firstVolume = 0.1;
+input double rate = 1.5;
+input double pip = 10;
+input bool isBuy = true;
+bool isDone = false;
+bool isError = false;
 
 
 //+------------------------------------------------------------------+
@@ -44,28 +48,47 @@ void OnTick()
 
    
    //--- enter buy trade if there's no existing trade
-   if(PositionsTotal() <= 0) {      
-      double askPrice = CurrentAsk();
-      double sl = askPrice - (firstPip * GetPipValue());
-      double tp = askPrice + (firstPip * GetPipValue());
+   if(PositionsTotal() <= 0 && OrdersTotal() <= 0 && !isDone && !isError) {
+      if(isBuy){
+         double askPrice = CurrentAsk();
+         double posVol = NormalizeDouble(firstVolume,rate);
+         double sl = askPrice - (pip * GetPipValue());
+         double tp = askPrice + (pip * 2 * GetPipValue());
       
-      Print("--Entering first buy order at: ask: " + askPrice + "sl: " + sl + "tp: " + tp);
+         Print("--Entering first buy order at: ask: " + askPrice + "sl: " + sl + "tp: " + tp);
       
-      trade.Buy(firstVolume,_Symbol,CurrentAsk(),sl,tp);      
+         trade.Buy(posVol,_Symbol,CurrentAsk(),sl,tp);
+         
+      }else if(!isBuy) {
+         double bidPrice = CurrentBid();
+         double posVol = NormalizeDouble(firstVolume,rate);
+         double sl = bidPrice + (pip * GetPipValue());
+         double tp = bidPrice - (pip * 2 * GetPipValue());
+         
+         Print("--Entering first sell order at: bid: " + bidPrice + "sl: " + sl + "tp: " + tp);
+      
+         trade.Sell(posVol,_Symbol,CurrentAsk(),sl,tp);
+      }
+           
       posTicket = trade.ResultOrder();
-      
       Print("--Ticket: " + posTicket);
-      
+            
       if(posTicket <= 0)
         {
          Print("Something went wrong!!");
-         posTicket = 1;
+         isError = true;
         } 
    }
    
+   if(PositionsTotal() <= 0 && OrdersTotal() >= 0 && !isDone) {
+      Print("There are no positions. There is " + OrdersTotal() + " order ");
+      ulong orderTicket = OrderGetTicket(0);         
+      trade.OrderDelete(orderTicket);
+      isDone = true;   
+   }
+
    
-   
-   if(PositionSelect(_Symbol)) {
+   if(PositionSelect(_Symbol) && !isDone && !isError) {
       //Print("=== There's an active position: " + _Symbol);   
       double posCurrentPrice = PositionGetDouble(POSITION_PRICE_CURRENT);
       double posOpenPrice = PositionGetDouble(POSITION_PRICE_OPEN);
@@ -73,14 +96,18 @@ void OnTick()
       double posTp = PositionGetDouble(POSITION_TP);
       int posType = PositionGetInteger(POSITION_TYPE);
       
-      //Print("....sl: " + posSl + "..tp: " + posTp);     
+       
+           
       Comment("openPrice: " + posOpenPrice, "\n", 
          "currPrice: " + posCurrentPrice, "\n",
          "posSl: " + posSl, "\n",
          "posTp: " + posTp, "\n",
          "orders: " + OrdersTotal(), "\n",
          "positions: " + PositionsTotal(), "\n",
+         "ticket: " + posTicket, "\n",
          "count: " + count );
+         
+  
          
       if(OrdersTotal() <= 0) {
          if(posType ==  POSITION_TYPE_BUY) {
@@ -89,24 +116,27 @@ void OnTick()
             if(count <= 1) {
                // first time
                Print("== First Time");
-               double posVol = firstVolume * 2;
+               double posVol = NormalizeDouble(firstVolume * rate,2);
                double bidPrice = posSl;
                double sl = posOpenPrice;
-               double tp = bidPrice - ((firstPip * 2) * GetPipValue());
+               double tp = bidPrice - (pip * 2 * GetPipValue());
                Print("--->..sl:" + sl + "..tp: " + tp + "..bid: " + bidPrice + "..volume: " + posVol);
                Print("---> volume: " + posVol);
                trade.SellStop(posVol,bidPrice,_Symbol,sl,tp);
+               posTicket = trade.ResultOrder();
                                
             } else {
                // other times
                Print("== Second Time");
-               double posVol = firstVolume * pow(2,count);
+               double posVol = NormalizeDouble(firstVolume * pow(rate,count),2);
                double bidPrice = posSl;
                double sl = posOpenPrice;
-               double tp = posSl - ((firstPip * pow(2,count)) * GetPipValue());
+               double tp = posSl - (pip * 2 * GetPipValue());
                Print("--->....sl:" + sl + "..tp: " + tp + "..bid: " + bidPrice + "..volume: " + posVol);
                Print("---> volume: " + posVol);
-               trade.SellStop(posVol,bidPrice,_Symbol,sl,tp);  
+               trade.SellStop(posVol,bidPrice,_Symbol,sl,tp);
+               posTicket = trade.ResultOrder();
+               
             }
             
             count += 1;
@@ -116,34 +146,40 @@ void OnTick()
             Print("===Opening buy pending order...");
             if(count <= 1) {
                Print("== First Time");
-               double posVol = firstVolume * 2;
+               double posVol = NormalizeDouble(firstVolume * rate, 2);
                double askPrice = posSl;
                double sl = posOpenPrice;
-               double tp = askPrice + ((firstPip * 2) * GetPipValue());
+               double tp = askPrice + (pip * 2 * GetPipValue());
                Print("--->..sl:" + sl + "..tp: " + tp + "..ask: " + askPrice + "..volume: " + posVol);
                Print("---> volume: " + posVol);
-               trade.BuyStop(posVol,askPrice,_Symbol,sl,tp);                 
+               trade.BuyStop(posVol,askPrice,_Symbol,sl,tp); 
+               posTicket = trade.ResultOrder();
+                               
             } else {
                // other times
                Print("== Second Time");
-               double posVol = firstVolume * pow(2,count);
+               double posVol = NormalizeDouble(firstVolume * pow(rate,count), 2);
                double askPrice = posSl;
                double sl = posOpenPrice;
-               double tp = posSl + ((firstPip * pow(2,count)) * GetPipValue());
+               double tp = posSl + (pip * 2 * GetPipValue());
                Print("--->....sl:" + sl + "..tp: " + tp + "..ask: " + askPrice + "..volume: " + posVol);
                Print("---> volume: " + posVol);
                trade.BuyStop(posVol,askPrice,_Symbol,sl,tp);
+               posTicket = trade.ResultOrder();
+               
             }
             
             count += 1;
          }
       }
       
-      
-      if(posCurrentPrice == posTp) {
-         Print("CONGRATULATIONS!! YOUVE HIT THE TAKE PROFIT!!");
-      }   
+         
+        
     }
+    
+     if(isDone && PositionsTotal() <= 0 && OrdersTotal() >= 0) {
+         Print("CONGRATULATIONS!! YOUVE HIT THE TAKE PROFIT!!");
+      }
    
    
    //--- if there is an existing position
